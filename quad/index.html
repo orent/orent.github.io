@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Quadratic Equation Forms</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1000px;
+      margin: 20px auto;
+      padding: 20px;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .forms {
+      width: 100%;
+      justify-content: center;
+    }
+    .graph-container {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+    }
+    .equation {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 24px;
+      margin: 20px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .form-label {
+      font-weight: bold;
+      margin-right: 12px;
+      width: 120px;
+    }
+    input {
+      width: 60px;
+      font-family: inherit;
+      font-size: inherit;
+      padding: 4px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      text-align: right;
+    }
+    }
+    input:focus {
+      outline: 2px solid #007bff;
+      border-color: transparent;
+    }
+    input:disabled {
+      background: #f0f0f0;
+      color: #666;
+      border-color: #ddd;
+    }
+    .a-factor { background: #ff9999; }  /* Red */
+    .b-factor { background: #99ff99; }  /* Green */
+    .c-factor { background: #99ccff; }  /* Blue */
+    .r1-factor { background: #ffd7a6; }  /* Orange */
+    .r2-factor { background: #d4a276; }  /* Brown */
+    .xv-factor { background: #d4b0e3; }  /* Purple */
+    .yv-factor { background: #e6e6e6; }  /* Grey */
+    .no-solutions {
+      color: #666;
+      font-style: italic;
+      margin-left: 10px;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      margin-top: 20px;
+      background: white;
+    }
+  </style>
+</head>
+<body>
+  <h1>Quadratic Equation Forms</h1>
+  
+  <div class="container">
+    <div class="forms">
+      <div class="equation">
+        <span class="form-label">Standard:</span>
+        <input type="text" id="a1" class="a-factor"> x² + 
+        <input type="text" id="b1" class="b-factor"> x + 
+        <input type="text" id="c1" class="c-factor">
+      </div>
+      <div class="equation">
+        <span class="form-label">Factored:</span>
+        <input type="text" id="a2" class="a-factor">(x - 
+        <input type="text" id="r1" class="r1-factor">)(x - 
+        <input type="text" id="r2" class="r2-factor">)
+        <span id="no-solutions" class="no-solutions"></span>
+      </div>
+      <div class="equation">
+        <span class="form-label">Vertex:</span>
+        <input type="text" id="a3" class="a-factor">(x + 
+        <input type="text" id="xv" class="xv-factor">)² + 
+        <input type="text" id="yv" class="yv-factor">
+      </div>
+    </div>
+    <div class="graph-container">
+      <canvas id="graph" width="450" height="450"></canvas>
+    </div>
+  </div>
+  <script>
+    // Helper to safely parse potentially invalid number input
+    function safeParseFloat(str) {
+      if (!str || str === '-') return null;
+      const num = parseFloat(str);
+      return isNaN(num) ? null : num;
+    }
+    // Helper to format number with reasonable precision
+    function formatNumber(num) {
+      if (num === null) return '';
+      return Number(num.toPrecision(6)).toString();
+    }
+    // Helper to set factored form state
+    function setFactoredFormState(hasRealRoots) {
+      const r1Input = document.getElementById('r1');
+      const r2Input = document.getElementById('r2');
+      const a2Input = document.getElementById('a2');
+      const noSolutionsMsg = document.getElementById('no-solutions');
+      
+      r1Input.disabled = !hasRealRoots;
+      r2Input.disabled = !hasRealRoots;
+      a2Input.disabled = !hasRealRoots;
+      
+      if (!hasRealRoots) {
+        r1Input.value = '';
+        r2Input.value = '';
+        a2Input.value = '';
+        noSolutionsMsg.textContent = '(no real roots)';
+      } else {
+        noSolutionsMsg.textContent = '';
+      }
+    }
+    // Graph rendering
+    const canvas = document.getElementById('graph');
+    const ctx = canvas.getContext('2d');
+    const GRAPH_SIZE = 450;
+    const PADDING = 10;
+    const GRID_SIZE = (GRAPH_SIZE - 2 * PADDING) / 10;
+    
+    // Dragging state
+    let isDragging = false;
+    let dragPoint = null;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    
+    // Convert canvas coordinates to graph coordinates
+    function canvasToGraphX(x) {
+      return (x - GRAPH_SIZE/2) / GRID_SIZE;
+    }
+    
+    function canvasToGraphY(y) {
+      return -(y - GRAPH_SIZE/2) / GRID_SIZE;
+    }
+    
+    // Check if a point was clicked
+    function getClickedPoint(canvasX, canvasY) {
+      const x = canvasToGraphX(canvasX);
+      const y = canvasToGraphY(canvasY);
+      
+      // Get current values
+      const a = safeParseFloat(document.getElementById('a1').value);
+      const b = safeParseFloat(document.getElementById('b1').value);
+      const c = safeParseFloat(document.getElementById('c1').value);
+      if (a === null || b === null || c === null) return null;
+      
+      // Check vertex
+      const xv = -b / (2 * a);
+      const yv = c - (b * b) / (4 * a);
+      const vertexDist = Math.sqrt(Math.pow(x - xv, 2) + Math.pow(y - yv, 2));
+      if (vertexDist < 0.3) return { type: 'vertex', x: xv, y: yv };
+      
+      // Check roots
+      const discriminant = b * b - 4 * a * c;
+      if (discriminant >= 0) {
+        const sqrtDisc = Math.sqrt(discriminant);
+        const r1 = (-b + sqrtDisc) / (2 * a);
+        const r2 = (-b - sqrtDisc) / (2 * a);
+        
+        // Always ensure r1 is the leftmost root
+        const [leftRoot, rightRoot] = r1 < r2 ? [r1, r2] : [r2, r1];
+        
+        if (Math.abs(x - leftRoot) < 0.3 && Math.abs(y) < 0.3) 
+          return { type: 'root1', x: leftRoot, y: 0 };
+        if (Math.abs(x - rightRoot) < 0.3 && Math.abs(y) < 0.3) 
+          return { type: 'root2', x: rightRoot, y: 0 };
+      }
+      
+      return null;
+    }
+    function drawGrid() {
+      ctx.clearRect(0, 0, GRAPH_SIZE, GRAPH_SIZE);
+      
+      // Grid lines
+      ctx.strokeStyle = '#eee';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i++) {
+        const pos = PADDING + i * GRID_SIZE;
+        ctx.beginPath();
+        ctx.moveTo(pos, PADDING);
+        ctx.lineTo(pos, GRAPH_SIZE - PADDING);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(PADDING, pos);
+        ctx.lineTo(GRAPH_SIZE - PADDING, pos);
+        ctx.stroke();
+      }
+      // Axes
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(PADDING, GRAPH_SIZE/2);
+      ctx.lineTo(GRAPH_SIZE - PADDING, GRAPH_SIZE/2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(GRAPH_SIZE/2, PADDING);
+      ctx.lineTo(GRAPH_SIZE/2, GRAPH_SIZE - PADDING);
+      ctx.stroke();
+      // Labels
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#000';
+      for (let i = -5; i <= 5; i++) {
+        if (i === 0) continue;
+        const x = GRAPH_SIZE/2 + i * GRID_SIZE;
+        const y = GRAPH_SIZE/2 - i * GRID_SIZE;
+        ctx.fillText(i.toString(), x, GRAPH_SIZE/2 + 20);
+        ctx.fillText(i.toString(), GRAPH_SIZE/2 - 20, y);
+      }
+    }
+    function graphToCanvasX(x) {
+      return GRAPH_SIZE/2 + x * GRID_SIZE;
+    }
+    function graphToCanvasY(y) {
+      return GRAPH_SIZE/2 - y * GRID_SIZE;
+    }
+    function plotPoint(x, y, color) {
+      const canvasX = graphToCanvasX(x);
+      const canvasY = graphToCanvasY(y);
+      
+      if (canvasY >= PADDING && canvasY <= GRAPH_SIZE - PADDING) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(canvasX, canvasY, 6, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+    function drawParabola(a, b, c) {
+      if (a === null || b === null || c === null) return;
+      
+      drawGrid();
+      // Draw curve
+      ctx.beginPath();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      let firstPoint = true;
+      let lastY;
+      for (let px = -5; px <= 5; px += 0.05) {
+        const py = a * px * px + b * px + c;
+        const canvasX = graphToCanvasX(px);
+        const canvasY = graphToCanvasY(py);
+        
+          if (firstPoint) {
+            ctx.moveTo(canvasX, canvasY);
+            firstPoint = false;
+          } else {
+            ctx.lineTo(canvasX, canvasY);
+          }
+          lastY = canvasY;
+      }
+      ctx.stroke();
+      // Plot vertex
+      const xv = -b / (2 * a);
+      const yv = c - (b * b) / (4 * a);
+      plotPoint(xv, yv, '#d4b0e3');  // Purple for vertex
+      // Plot roots if they exist
+      const discriminant = b * b - 4 * a * c;
+      if (discriminant >= 0) {
+        const sqrtDisc = Math.sqrt(discriminant);
+        const r1 = (-b + sqrtDisc) / (2 * a);
+        const r2 = (-b - sqrtDisc) / (2 * a);
+        // Always plot leftmost root as r1-factor color (orange) and rightmost as r2-factor color (brown)
+        const [leftRoot, rightRoot] = r1 < r2 ? [r1, r2] : [r2, r1];
+        plotPoint(leftRoot, 0, '#ffd7a6');  // Orange for left root
+        plotPoint(rightRoot, 0, '#d4a276');  // Brown for right root
+      }
+    }
+    function updateFromStandard() {
+      const a = safeParseFloat(document.getElementById('a1').value);
+      const b = safeParseFloat(document.getElementById('b1').value);
+      const c = safeParseFloat(document.getElementById('c1').value);
+      
+      if (a === null || b === null || c === null) return;
+      
+      const discriminant = b * b - 4 * a * c;
+      
+      if (discriminant >= 0) {
+        const sqrtDisc = Math.sqrt(discriminant);
+        const r1 = (-b + sqrtDisc) / (2 * a);
+        const r2 = (-b - sqrtDisc) / (2 * a);
+        
+        setFactoredFormState(true);
+        // Directly use calculated roots
+        document.getElementById('r1').value = formatNumber(Math.min(r1, r2));
+        document.getElementById('r2').value = formatNumber(Math.max(r1, r2));
+        document.getElementById('a2').value = formatNumber(a);
+      } else {
+        setFactoredFormState(false);
+      }
+      const xv = -b / (2 * a);
+      const yv = c - (b * b) / (4 * a);
+      
+      document.getElementById('xv').value = formatNumber(xv);
+      document.getElementById('yv').value = formatNumber(yv);
+      document.getElementById('a3').value = formatNumber(a);
+      drawParabola(a, b, c);
+    }
+    function updateFromFactored() {
+      const a = safeParseFloat(document.getElementById('a2').value);
+      const r1 = safeParseFloat(document.getElementById('r1').value);
+      const r2 = safeParseFloat(document.getElementById('r2').value);
+      
+      if (a === null || r1 === null || r2 === null) return;
+      
+      // Ensure r1 is leftmost (smaller) root and r2 is rightmost (larger) root
+      if (r1 > r2) {
+        document.getElementById('r1').value = formatNumber(r2);
+        document.getElementById('r2').value = formatNumber(r1);
+        updateFromFactored();  // Recurse once to handle the swap
+        return;
+      }
+      
+      // Both roots are subtracted: (x - r1)(x - r2) = x² - (r1+r2)x + r1r2
+      const b = -a * (r1 + r2);
+      const c = a * r1 * r2;
+      
+      document.getElementById('a1').value = formatNumber(a);
+      document.getElementById('b1').value = formatNumber(b);
+      document.getElementById('c1').value = formatNumber(c);
+      
+      const xv = (r1 + r2) / 2;
+      const yv = c - (b * b) / (4 * a);
+      
+      document.getElementById('xv').value = formatNumber(-xv);
+      document.getElementById('yv').value = formatNumber(yv);
+      document.getElementById('a3').value = formatNumber(a);
+      
+      setFactoredFormState(true);
+      drawParabola(a, b, c);
+    }
+    function updateFromVertex() {
+      const a = safeParseFloat(document.getElementById('a3').value);
+      const xv = safeParseFloat(document.getElementById('xv').value);
+      const yv = safeParseFloat(document.getElementById('yv').value);
+      
+      if (a === null || xv === null || yv === null) return;
+      
+      // From vertex form: a(x + h)² + k = ax² + 2ahx + (ah² + k)
+      const b = 2 * a * xv;
+      const c = a * xv * xv + yv;
+      
+      document.getElementById('a1').value = formatNumber(a);
+      document.getElementById('b1').value = formatNumber(b);
+      document.getElementById('c1').value = formatNumber(c);
+      
+      const discriminant = b * b - 4 * a * c;
+      
+      if (discriminant >= 0) {
+        const sqrtDisc = Math.sqrt(discriminant);
+        const r1 = (-b + sqrtDisc) / (2 * a);
+        const r2 = (-b - sqrtDisc) / (2 * a);
+        
+        setFactoredFormState(true);
+        // Directly use calculated roots
+        document.getElementById('r1').value = formatNumber(Math.min(r1, r2));
+        document.getElementById('r2').value = formatNumber(Math.max(r1, r2));
+        document.getElementById('a2').value = formatNumber(a);
+      } else {
+        setFactoredFormState(false);
+      }
+      drawParabola(a, b, c);
+    }
+    // Add drag handlers for the canvas
+    canvas.addEventListener('mousedown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      const point = getClickedPoint(x, y);
+      if (point) {
+        isDragging = true;
+        dragPoint = point;
+        dragStartX = x;
+        dragStartY = y;
+        canvas.style.cursor = 'grabbing';
+      }
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      // Update cursor style
+      if (!isDragging) {
+        const point = getClickedPoint(x, y);
+        canvas.style.cursor = point ? 'grab' : 'default';
+      }
+      
+      if (isDragging && dragPoint) {
+        const newX = canvasToGraphX(x);
+        const newY = dragPoint.type === 'vertex' ? canvasToGraphY(y) : 0;
+        
+        // Update equation based on drag point type
+        const a = safeParseFloat(document.getElementById('a1').value);
+        if (a === null) return;
+        
+        if (dragPoint.type === 'vertex') {
+          // Update vertex form
+          document.getElementById('xv').value = formatNumber(-newX);
+          document.getElementById('yv').value = formatNumber(newY);
+          updateFromVertex();
+        } else if (dragPoint.type.startsWith('root')) {
+          // Get both current roots
+          const a = safeParseFloat(document.getElementById('a2').value);
+          const r1Input = document.getElementById('r1');
+          const r2Input = document.getElementById('r2');
+          const oldR1 = safeParseFloat(r1Input.value);
+          const oldR2 = safeParseFloat(r2Input.value);  // No negation needed now
+          if (a === null || oldR1 === null || oldR2 === null) return;
+          
+          let newR1, newR2;
+          if (dragPoint.type === 'root1') {
+            // Dragging left (orange) root - move directly with mouse
+            newR1 = Math.min(newX, oldR2);  // Don't let left cross right
+            newR2 = oldR2;
+          } else {
+            // Dragging right (brown) root
+            newR1 = oldR1;
+            newR2 = Math.max(newX, oldR1);  // Don't let right cross left
+          }
+          
+          r1Input.value = formatNumber(newR1);
+          r2Input.value = formatNumber(newR2);  // Both r1 and r2 represent the actual root values now
+          updateFromFactored();
+        }
+      }
+    });
+    
+    canvas.addEventListener('mouseup', () => {
+      isDragging = false;
+      dragPoint = null;
+      canvas.style.cursor = 'default';
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+      dragPoint = null;
+      canvas.style.cursor = 'default';
+    });
+    // Add event listeners to all inputs
+    const inputs = document.querySelectorAll('input');
+    inputs.forEach(input => {
+      input.addEventListener('input', () => {
+        if (input.id.startsWith('a1') || input.id.startsWith('b') || input.id.startsWith('c')) {
+          updateFromStandard();
+        } else if (input.id.startsWith('a2') || input.id.startsWith('r')) {
+          updateFromFactored();
+        } else if (input.id.startsWith('a3') || input.id.startsWith('x') || input.id.startsWith('y')) {
+          updateFromVertex();
+        }
+      });
+    });
+    // Initialize with a simple quadratic
+    document.getElementById('a1').value = '1';
+    document.getElementById('b1').value = '0';
+    document.getElementById('c1').value = '-1';
+    updateFromStandard();
+  </script>
+</body>
+</html>
